@@ -5,36 +5,23 @@ services:
     image: caddy:2
     network_mode: host
     depends_on:
-      - pds
+      - feedgen
     restart: unless-stopped
     volumes:
       - type: bind
-        source: /pds/caddy/data
+        source: /feedgen/caddy/data
         target: /data
       - type: bind
-        source: /pds/caddy/etc/caddy
+        source: /feedgen/caddy/etc/caddy
         target: /etc/caddy
-  pds:
-    container_name: pds
-    image: ghcr.io/bluesky-social/pds:latest
+  feedgen:
+    container_name: feedgen
+    build: ./
     network_mode: host
     restart: unless-stopped
     volumes:
       - type: bind
-        source: /pds
-        target: /pds
+        source: /feedgen
+        target: /feedgen
     env_file:
-      - /pds/pds.env
-  watchtower:
-    container_name: watchtower
-    image: containrrr/watchtower:latest
-    network_mode: host
-    volumes:
-      - type: bind
-        source: /var/run/docker.sock
-        target: /var/run/docker.sock
-    restart: unless-stopped
-    environment:
-      TZ: "US/Pacific"
-      WATCHTOWER_CLEANUP: true
-      WATCHTOWER_SCHEDULE: "@midnight"
+      - /feedgen/.env

@@ -15,8 +15,8 @@ DISTRIB_ID="$(lsb_release --id --short | tr '[:upper:]' '[:lower:]' || true)"
 GENERATE_SECURE_SECRET_CMD="openssl rand --hex 16"
 GENERATE_K256_PRIVATE_KEY_CMD="openssl ecparam --name secp256k1 --genkey --noout --outform DER | tail --bytes=+8 | head --bytes=32 | xxd --plain --cols 32"
 
-# The Docker compose file.
-COMPOSE_URL="https://raw.githubusercontent.com/bluesky-social/pds/main/compose.yaml"
+# Source location
+SOURCE_URL="https://github.com/sacckey/feed-generator.git"
 
 # System dependencies.
 REQUIRED_SYSTEM_PACKAGES="
@@ -26,6 +26,7 @@ REQUIRED_SYSTEM_PACKAGES="
   lsb-release
   openssl
   xxd
+  git
 "
 # Docker packages.
 REQUIRED_DOCKER_PACKAGES="
@@ -42,13 +43,9 @@ METADATA_URLS+=("http://169.254.169.254/metadata/v1/interfaces/public/0/ipv4/add
 METADATA_URLS+=("http://169.254.169.254/2021-03-23/meta-data/public-ipv4") # AWS
 METADATA_URLS+=("http://169.254.169.254/hetzner/v1/metadata/public-ipv4") # Hetzner
 
-PDS_DATADIR="${1:-/pds}"
-PDS_HOSTNAME="${2:-}"
-PDS_ADMIN_EMAIL="${3:-}"
-PDS_DID_PLC_URL="https://plc.bsky-sandbox.dev"
-PDS_BSKY_APP_VIEW_ENDPOINT="https://api.bsky-sandbox.dev"
-PDS_BSKY_APP_VIEW_DID="did:web:api.bsky-sandbox.dev"
-PDS_CRAWLERS="https://bgs.bsky-sandbox.dev"
+FEEDGEN_DATADIR="${1:-/feedgen}"
+FEEDGEN_HOSTNAME="${2:-}"
+FEEDGEN_ADMIN_EMAIL="${3:-}"
 
 function usage {
   local error="${1}"
@@ -102,26 +99,26 @@ function main {
     exit 1
   fi
 
-  # Check if PDS is already installed.
-  if [[ -e "${PDS_DATADIR}/pds.sqlite" ]]; then
+  # Check if feed generator is already installed.
+  if [[ -e "${FEEDGEN_DATADIR}/feedgen.sqlite" ]]; then
     echo
-    echo "ERROR: pds is already configured in ${PDS_DATADIR}"
+    echo "ERROR: feedgen is already configured in ${FEEDGEN_DATADIR}"
     echo
     echo "To do a clean re-install:"
     echo "------------------------------------"
     echo "1. Stop the service"
     echo
-    echo "  sudo systemctl stop pds"
+    echo "  sudo systemctl stop feedgen"
     echo
     echo "2. Delete the data directory"
     echo
-    echo "  sudo rm -rf ${PDS_DATADIR}"
+    echo "  sudo rm -rf ${FEEDGEN_DATADIR}"
     echo
     echo "3. Re-run this installation script"
       echo
     echo "  sudo bash ${0}"
     echo
-    echo "For assistance, check https://github.com/bluesky-social/pds"
+    echo "For assistance, check https://github.com/bluesky-social/feed-generator"
     exit 1
   fi
 
@@ -158,7 +155,7 @@ function main {
   #
   # Prompt user for required variables.
   #
-  if [[ -z "${PDS_HOSTNAME}" ]]; then
+  if [[ -z "${FEEDGEN_HOSTNAME}" ]]; then
     cat <<INSTALLER_MESSAGE
 ---------------------------------------
      Add DNS Record for Public IP
@@ -166,17 +163,16 @@ function main {
 
   From your DNS provider's control panel, create the required
   DNS record with the value of your server's public IP address.
-  
+
   + Any DNS name that can be resolved on the public internet will work.
   + Replace example.com below with any valid domain name you control.
   + A TTL of 600 seconds (10 minutes) is recommended.
-  
+
   Example DNS record:
-  
+
     NAME                TYPE   VALUE
     ----                ----   -----
     example.com         A      ${PUBLIC_IP:-Server public IP}
-    *.example.com       A      ${PUBLIC_IP:-Server public IP}
 
   **IMPORTANT**
   It's recommended to wait 3-5 minutes after creating a new DNS record
@@ -185,32 +181,62 @@ function main {
 
 INSTALLER_MESSAGE
 
-    if [[ -z "${PDS_HOSTNAME}" ]]; then
-      read -p "Enter your public DNS address (e.g. example.com): " PDS_HOSTNAME
+    if [[ -z "${FEEDGEN_HOSTNAME}" ]]; then
+      read -p "Enter your public DNS address (e.g. example.com): " FEEDGEN_HOSTNAME
     fi
   fi
 
-  if [[ -z "${PDS_HOSTNAME}" ]]; then
+  if [[ -z "${FEEDGEN_HOSTNAME}" ]]; then
     usage "No public DNS address specified"
   fi
 
-  if [[ "${PDS_HOSTNAME}" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+  if [[ "${FEEDGEN_HOSTNAME}" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
     usage "Invalid public DNS address (must not be an IP address)"
   fi
 
   # Admin email
-  if [[ -z "${PDS_ADMIN_EMAIL}" ]]; then
-    read -p "Enter an admin email address (e.g. you@example.com): " PDS_ADMIN_EMAIL
+  if [[ -z "${FEEDGEN_ADMIN_EMAIL}" ]]; then
+    read -p "Enter an admin email address (e.g. you@example.com): " FEEDGEN_ADMIN_EMAIL
   fi
-  if [[ -z "${PDS_ADMIN_EMAIL}" ]]; then
+  if [[ -z "${FEEDGEN_ADMIN_EMAIL}" ]]; then
     usage "No admin email specified"
   fi
 
-  if [[ -z "${PDS_ADMIN_EMAIL}" ]]; then
-    read -p "Enter an admin email address (e.g. you@example.com): " PDS_ADMIN_EMAIL
+  if [[ -z "${FEEDGEN_ADMIN_EMAIL}" ]]; then
+    read -p "Enter an admin email address (e.g. you@example.com): " FEEDGEN_ADMIN_EMAIL
   fi
-  if [[ -z "${PDS_ADMIN_EMAIL}" ]]; then
+  if [[ -z "${FEEDGEN_ADMIN_EMAIL}" ]]; then
     usage "No admin email specified"
+  fi
+
+  # Subscription endpoint
+  if [[ -z "${FEEDGEN_SUBSCRIPTION_ENDPOINT}" ]]; then
+    read -p "Enter an subscription endpoint (e.g. wss://bsky.social): " FEEDGEN_SUBSCRIPTION_ENDPOINT
+  fi
+  if [[ -z "${FEEDGEN_SUBSCRIPTION_ENDPOINT}" ]]; then
+    usage "No subscription endpoint specified"
+  fi
+
+  if [[ -z "${FEEDGEN_SUBSCRIPTION_ENDPOINT}" ]]; then
+    read -p "Enter an subscription endpoint (e.g. wss://bsky.social): " FEEDGEN_SUBSCRIPTION_ENDPOINT
+  fi
+  if [[ -z "${FEEDGEN_SUBSCRIPTION_ENDPOINT}" ]]; then
+    usage "No subscription endpoint specified"
+  fi
+
+  # Feedgen publisher did
+  if [[ -z "${FEEDGEN_PUBLISHER_DID}" ]]; then
+    read -p "Enter an Feedgen publisher did (e.g. did:plc:abcde....): " FEEDGEN_PUBLISHER_DID
+  fi
+  if [[ -z "${FEEDGEN_PUBLISHER_DID}" ]]; then
+    usage "No Feedgen publisher did specified"
+  fi
+
+  if [[ -z "${FEEDGEN_PUBLISHER_DID}" ]]; then
+    read -p "Enter an Feedgen publisher did (e.g. did:plc:abcde....): " FEEDGEN_PUBLISHER_DID
+  fi
+  if [[ -z "${FEEDGEN_PUBLISHER_DID}" ]]; then
+    usage "No Feedgen publisher did specified"
   fi
 
 
@@ -227,7 +253,7 @@ INSTALLER_MESSAGE
       sleep 2
     done
   fi
-  
+
   apt-get update
   apt-get install --yes ${REQUIRED_SYSTEM_PACKAGES}
 
@@ -272,31 +298,32 @@ DOCKERD_CONFIG
   #
   # Create data directory.
   #
-  if ! [[ -d "${PDS_DATADIR}" ]]; then
-    echo "* Creating data directory ${PDS_DATADIR}"
-    mkdir --parents "${PDS_DATADIR}"
+  if ! [[ -d "${FEEDGEN_DATADIR}" ]]; then
+    echo "* Creating data directory ${FEEDGEN_DATADIR}"
+    mkdir --parents "${FEEDGEN_DATADIR}"
   fi
-  chmod 700 "${PDS_DATADIR}"
+  chmod 700 "${FEEDGEN_DATADIR}"
 
   #
   # Configure Caddy
   #
-  if ! [[ -d "${PDS_DATADIR}/caddy/data" ]]; then
+  if ! [[ -d "${FEEDGEN_DATADIR}/caddy/data" ]]; then
     echo "* Creating Caddy data directory"
-    mkdir --parents "${PDS_DATADIR}/caddy/data"
+    mkdir --parents "${FEEDGEN_DATADIR}/caddy/data"
   fi
-  if ! [[ -d "${PDS_DATADIR}/caddy/etc/caddy" ]]; then
+  if ! [[ -d "${FEEDGEN_DATADIR}/caddy/etc/caddy" ]]; then
     echo "* Creating Caddy config directory"
-    mkdir --parents "${PDS_DATADIR}/caddy/etc/caddy"
+    mkdir --parents "${FEEDGEN_DATADIR}/caddy/etc/caddy"
   fi
 
   echo "* Creating Caddy config file"
-  cat <<CADDYFILE >"${PDS_DATADIR}/caddy/etc/caddy/Caddyfile"
+  cat <<CADDYFILE >"${FEEDGEN_DATADIR}/caddy/etc/caddy/Caddyfile"
 {
-  email ${PDS_ADMIN_EMAIL}
+  email ${FEEDGEN_ADMIN_EMAIL}
+  ask http://localhost:3000
 }
 
-*.${PDS_HOSTNAME}, ${PDS_HOSTNAME} {
+${FEEDGEN_HOSTNAME} {
   tls {
     on_demand
   }
@@ -305,63 +332,71 @@ DOCKERD_CONFIG
 CADDYFILE
 
   #
-  # Create the PDS env config
+  # Create the feed generator env config
   #
-  # Created here so that we can use it later in multiple places.
-  PDS_ADMIN_PASSWORD=$(eval "${GENERATE_SECURE_SECRET_CMD}")
-  cat <<PDS_CONFIG >"${PDS_DATADIR}/pds.env"
-PDS_HOSTNAME=${PDS_HOSTNAME}
-PDS_JWT_SECRET=$(eval "${GENERATE_SECURE_SECRET_CMD}")
-PDS_ADMIN_PASSWORD=${PDS_ADMIN_PASSWORD}
-PDS_REPO_SIGNING_KEY_K256_PRIVATE_KEY_HEX=$(eval "${GENERATE_K256_PRIVATE_KEY_CMD}")
-PDS_PLC_ROTATION_KEY_K256_PRIVATE_KEY_HEX=$(eval "${GENERATE_K256_PRIVATE_KEY_CMD}")
-PDS_DB_SQLITE_LOCATION=${PDS_DATADIR}/pds.sqlite
-PDS_BLOBSTORE_DISK_LOCATION=${PDS_DATADIR}/blocks
-PDS_DID_PLC_URL=${PDS_DID_PLC_URL}
-PDS_BSKY_APP_VIEW_ENDPOINT=${PDS_BSKY_APP_VIEW_ENDPOINT}
-PDS_BSKY_APP_VIEW_DID=${PDS_BSKY_APP_VIEW_DID}
-PDS_CRAWLERS=${PDS_CRAWLERS}
-PDS_CONFIG
+  cat <<FEEDGEN_CONFIG >"${FEEDGEN_DATADIR}/.env"
+# Whichever port you want to run this on
+FEEDGEN_PORT=3000
+
+# Change this to use a different bind address
+FEEDGEN_LISTENHOST=localhost
+
+# Set to something like db.sqlite to store persistently
+FEEDGEN_SQLITE_LOCATION=${FEEDGEN_DATADIR}/feedgen.sqlite
+
+# Don't change unless you're working in a different environment than the primary Bluesky network
+FEEDGEN_SUBSCRIPTION_ENDPOINT=${FEEDGEN_SUBSCRIPTION_ENDPOINT}
+
+# Set this to the hostname that you intend to run the service at
+FEEDGEN_HOSTNAME=${FEEDGEN_HOSTNAME}
+
+# Set this to the DID of the account you'll use to publish the feed
+# You can find your accounts DID by going to
+# https://bsky.social/xrpc/com.atproto.identity.resolveHandle?handle=YOUR_HANDLE
+FEEDGEN_PUBLISHER_DID=${FEEDGEN_PUBLISHER_DID}
+
+# Only use this if you want a service did different from did:web
+# FEEDGEN_SERVICE_DID="did:plc:abcde..."
+
+# Delay between reconnect attempts to the firehose subscription endpoint (in milliseconds)
+FEEDGEN_SUBSCRIPTION_RECONNECT_DELAY=3000
+
+FEEDGEN_CONFIG
 
   #
-  # Download and install pds launcher.
+  # Download and install feedgen launcher.
   #
-  echo "* Downloading PDS compose file"
-  curl \
-    --silent \
-    --show-error \
-    --fail \
-    --output "${PDS_DATADIR}/compose.yaml" \
-    "${COMPOSE_URL}"
+  echo "* Downloading feed generator sources"
+  git clone -b docker "${SOURCE_URL}" "${FEEDGEN_DATADIR}"
 
-  # Replace the /pds paths with the ${PDS_DATADIR} path.
-  sed --in-place "s|/pds|${PDS_DATADIR}|g" "${PDS_DATADIR}/compose.yaml"
+  # Replace the /feedgen paths with the ${FEEDGEN_DATADIR} path.
+  sed --in-place "s|/feedgen|${FEEDGEN_DATADIR}|g" "${FEEDGEN_DATADIR}/docker-compose.yml"
 
   #
   # Create the systemd service.
   #
-  echo "* Starting the pds systemd service"
-  cat <<SYSTEMD_UNIT_FILE >/etc/systemd/system/pds.service
+  echo "* Starting the feedgen systemd service"
+  cat <<SYSTEMD_UNIT_FILE >/etc/systemd/system/feedgen.service
 [Unit]
-Description=Bluesky PDS Service
-Documentation=https://github.com/bluesky-social/pds
+Description=Bluesky Feed Generator Service
+Documentation=https://github.com/bluesky-social/feed-generator
 Requires=docker.service
 After=docker.service
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-WorkingDirectory=${PDS_DATADIR}
-ExecStart=/usr/bin/docker compose --file ${PDS_DATADIR}/compose.yaml up --detach
-ExecStop=/usr/bin/docker compose --file ${PDS_DATADIR}/compose.yaml down
+WorkingDirectory=${FEEDGEN_DATADIR}
+ExecStart=/usr/bin/docker compose --file ${FEEDGEN_DATADIR}/docker-compose.yml up --detach
+ExecStop=/usr/bin/docker compose --file ${FEEDGEN_DATADIR}/docker-compose.yml down
 
 [Install]
 WantedBy=default.target
 SYSTEMD_UNIT_FILE
 
   systemctl daemon-reload
-  systemctl enable pds
-  systemctl restart pds
+  systemctl enable feedgen
+  systemctl restart feedgen
 
   # Enable firewall access if ufw is in use.
   if ufw status >/dev/null 2>&1; then
@@ -377,12 +412,12 @@ SYSTEMD_UNIT_FILE
 
   cat <<INSTALLER_MESSAGE
 ========================================================================
-PDS installation successful! 
+Feed generator installation successful!
 ------------------------------------------------------------------------
 
-Check service status      : sudo systemctl status pds
-Watch service logs        : sudo docker logs -f pds
-Backup service data       : ${PDS_DATADIR}
+Check service status      : sudo systemctl status feedgen
+Watch service logs        : sudo docker logs -f feedgen
+Backup service data       : ${FEEDGEN_DATADIR}
 
 Required Firewall Ports
 ------------------------------------------------------------------------
@@ -393,22 +428,11 @@ HTTP Control Panel     Inbound    443    TCP       Any
 
 Required DNS entries
 ------------------------------------------------------------------------
-Name                         Type       Value          
+Name                         Type       Value
 -------                      ---------  ---------------
-${PDS_HOSTNAME}              A          ${PUBLIC_IP}   
-*.${PDS_HOSTNAME}            A          ${PUBLIC_IP}   
+${FEEDGEN_HOSTNAME}              A          ${PUBLIC_IP}
 
 Detected public IP of this server: ${PUBLIC_IP}
-
-# To create an invite code, run the following command:
-
-curl --silent \\
-  --show-error \\
-  --request POST \\
-  --user "admin:${PDS_ADMIN_PASSWORD}" \\
-  --header "Content-Type: application/json" \\
-  --data '{"useCount": 1}' \\
-  https://${PDS_HOSTNAME}/xrpc/com.atproto.server.createInviteCode 
 
 ========================================================================
 INSTALLER_MESSAGE
