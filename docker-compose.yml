@@ -21,7 +21,7 @@ services:
     restart: unless-stopped
     volumes:
       - type: bind
-        source: /feedgen
-        target: /feedgen
+        source: ./feedgen.sqlite
+        target: /app/feedgen.sqlite
     env_file:
-      - /feedgen/.env
+      - ./.env

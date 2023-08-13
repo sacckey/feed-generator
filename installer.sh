@@ -46,6 +46,8 @@ METADATA_URLS+=("http://169.254.169.254/hetzner/v1/metadata/public-ipv4") # Hetz
 FEEDGEN_DATADIR="${1:-/feedgen}"
 FEEDGEN_HOSTNAME="${2:-}"
 FEEDGEN_ADMIN_EMAIL="${3:-}"
+FEEDGEN_SUBSCRIPTION_ENDPOINT="${4:-}"
+FEEDGEN_PUBLISHER_DID="${5:-}"
 
 function usage {
   local error="${1}"
@@ -305,6 +307,15 @@ DOCKERD_CONFIG
   chmod 700 "${FEEDGEN_DATADIR}"
 
   #
+  # Download and install feedgen launcher.
+  #
+  echo "* Downloading feed generator sources"
+  git clone -b docker "${SOURCE_URL}" "${FEEDGEN_DATADIR}"
+
+  # Replace the /feedgen paths with the ${FEEDGEN_DATADIR} path.
+  sed --in-place "s|/feedgen|${FEEDGEN_DATADIR}|g" "${FEEDGEN_DATADIR}/docker-compose.yml"
+
+  #
   # Configure Caddy
   #
   if ! [[ -d "${FEEDGEN_DATADIR}/caddy/data" ]]; then
@@ -319,15 +330,17 @@ DOCKERD_CONFIG
   echo "* Creating Caddy config file"
   cat <<CADDYFILE >"${FEEDGEN_DATADIR}/caddy/etc/caddy/Caddyfile"
 {
-  email ${FEEDGEN_ADMIN_EMAIL}
-  ask http://localhost:3000
+	email ${FEEDGEN_ADMIN_EMAIL}
+	on_demand_tls {
+		ask http://localhost:3000/.well-known/did.json
+	}
 }
 
 ${FEEDGEN_HOSTNAME} {
-  tls {
-    on_demand
-  }
-  reverse_proxy http://localhost:3000
+	tls {
+		on_demand
+	}
+	reverse_proxy http://localhost:3000
 }
 CADDYFILE
 
@@ -362,15 +375,6 @@ FEEDGEN_PUBLISHER_DID=${FEEDGEN_PUBLISHER_DID}
 FEEDGEN_SUBSCRIPTION_RECONNECT_DELAY=3000
 
 FEEDGEN_CONFIG
-
-  #
-  # Download and install feedgen launcher.
-  #
-  echo "* Downloading feed generator sources"
-  git clone -b docker "${SOURCE_URL}" "${FEEDGEN_DATADIR}"
-
-  # Replace the /feedgen paths with the ${FEEDGEN_DATADIR} path.
-  sed --in-place "s|/feedgen|${FEEDGEN_DATADIR}|g" "${FEEDGEN_DATADIR}/docker-compose.yml"
 
   #
   # Create the systemd service.

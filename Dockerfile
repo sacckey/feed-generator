@@ -1,12 +1,12 @@
-FROM node:20-alpine
+FROM node:18-alpine
 
 WORKDIR /app
-COPY ./package.json ./yarn.lock ./
-RUN yarn install --production --frozen-lockfile > /dev/null
+COPY ./package.json ./yarn.lock ./tsconfig.json ./
+RUN yarn install
 
-COPY ./src ./
+COPY ./src ./src
 
 EXPOSE 3000
-ENV NODE_ENV=production
+ENV NODE_ENV=development
 
-CMD ["yarn", "start"]
+CMD yarn start
