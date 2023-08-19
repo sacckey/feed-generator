@@ -363,7 +363,7 @@ FEEDGEN_PORT=3000
 FEEDGEN_LISTENHOST=localhost
 
 # Set to something like db.sqlite to store persistently
-FEEDGEN_SQLITE_LOCATION=/app/sqlite/feedgen.sqlite
+FEEDGEN_SQLITE_LOCATION=/sqlite/feedgen.sqlite
 
 # Don't change unless you're working in a different environment than the primary Bluesky network
 FEEDGEN_SUBSCRIPTION_ENDPOINT=${FEEDGEN_SUBSCRIPTION_ENDPOINT}

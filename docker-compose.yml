@@ -22,6 +22,6 @@ services:
     volumes:
       - type: bind
         source: /feedgen/sqlite
-        target: /app/feedgen/sqlite
+        target: /sqlite
     env_file:
       - /feedgen/.env
