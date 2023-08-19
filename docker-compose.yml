@@ -16,12 +16,12 @@ services:
         target: /etc/caddy
   feedgen:
     container_name: feedgen
-    build: ./
+    build: /feedgen
     network_mode: host
     restart: unless-stopped
     volumes:
       - type: bind
-        source: ./feedgen.sqlite
-        target: /app/feedgen.sqlite
+        source: /feedgen/sqlite
+        target: /app/feedgen/sqlite
     env_file:
-      - ./.env
+      - /feedgen/.env

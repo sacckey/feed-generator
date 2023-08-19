@@ -102,7 +102,7 @@ function main {
   fi
 
   # Check if feed generator is already installed.
-  if [[ -e "${FEEDGEN_DATADIR}/feedgen.sqlite" ]]; then
+  if [[ -e "${FEEDGEN_DATADIR}/sqlite/feedgen.sqlite" ]]; then
     echo
     echo "ERROR: feedgen is already configured in ${FEEDGEN_DATADIR}"
     echo
@@ -316,6 +316,14 @@ DOCKERD_CONFIG
   sed --in-place "s|/feedgen|${FEEDGEN_DATADIR}|g" "${FEEDGEN_DATADIR}/docker-compose.yml"
 
   #
+  # Configure SQLite
+  #
+  if ! [[ -d "${FEEDGEN_DATADIR}/sqlite" ]]; then
+    echo "* Creating SQLite data directory"
+    mkdir --parents "${FEEDGEN_DATADIR}/sqlite"
+  fi
+
+  #
   # Configure Caddy
   #
   if ! [[ -d "${FEEDGEN_DATADIR}/caddy/data" ]]; then
@@ -355,7 +363,7 @@ FEEDGEN_PORT=3000
 FEEDGEN_LISTENHOST=localhost
 
 # Set to something like db.sqlite to store persistently
-FEEDGEN_SQLITE_LOCATION=${FEEDGEN_DATADIR}/feedgen.sqlite
+FEEDGEN_SQLITE_LOCATION=/app/sqlite/feedgen.sqlite
 
 # Don't change unless you're working in a different environment than the primary Bluesky network
 FEEDGEN_SUBSCRIPTION_ENDPOINT=${FEEDGEN_SUBSCRIPTION_ENDPOINT}
